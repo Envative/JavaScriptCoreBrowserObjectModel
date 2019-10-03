@@ -13,8 +13,8 @@ let package = Package(
     name: "JavaScriptCoreBrowserObjectModel",
     dependencies: [
         //.Package(url: "https://github.com/httpswift/swifter.git", majorVersion: 1),
-    ],
-    exclude: [ "Tests" ]
+    ]//,
+    //exclude: [ "Tests" ]
 )
 
 /*
