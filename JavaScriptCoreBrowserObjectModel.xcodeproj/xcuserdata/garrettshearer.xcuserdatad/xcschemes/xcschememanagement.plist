@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SchemeUserState</key>
+	<dict>
+		<key>JavaScriptCoreBrowserObjectModeliOS.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>31</integer>
+		</dict>
+		<key>iOS.xcscheme_^#shared#^_</key>
+		<dict>
+			<key>orderHint</key>
+			<integer>33</integer>
+		</dict>
+	</dict>
+	<key>SuppressBuildableAutocreation</key>
+	<dict>
+		<key>B39B9B071FBBF31E00A6C36C</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>B39B9B101FBBF31E00A6C36C</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>B39B9B271FBBF5CE00A6C36C</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>B39B9B2F1FBBF5CF00A6C36C</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>B39B9B431FBBF6BD00A6C36C</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+		<key>B39B9B4B1FBBF6BD00A6C36C</key>
+		<dict>
+			<key>primary</key>
+			<true/>
+		</dict>
+	</dict>
+</dict>
+</plist>
