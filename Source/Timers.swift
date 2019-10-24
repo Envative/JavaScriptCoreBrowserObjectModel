@@ -18,11 +18,28 @@ import JavaScriptCore
 
 @objc open class Timers: NSObject {
     
-
+    weak var queue: DispatchQueue?
     
     //
     // General
     //
+    public override init() {
+        super.init()
+        setTimeout = { (callback, delay) in
+            return self.createTimer(callback: callback, delay: delay, repeats: false)
+        }
+        clearTimeout = { (identifier) in
+            self.invalidateTimer(identifier)
+        }
+        
+        // Interval
+        setInterval = { (callback, delay) in
+            return self.createTimer(callback: callback, delay: delay, repeats: true)
+        }
+       clearInterval = { (identifier) in
+            self.invalidateTimer(identifier)
+        }
+    }
     
     //public class var count: Int { return timers.count }
     
@@ -34,11 +51,17 @@ import JavaScriptCore
     //   let context = JSContext()!
     //   Timers.extend(context)
     //   context.evaluateScript("setTimeout(done, 5 * 1000)") // `done()` is called after 5s
-    open class func extend(_ jsContext: JSContext) {
-        jsContext.setObject(setTimeout, forKeyedSubscript: "setTimeout" as (NSCopying & NSObjectProtocol))
-        jsContext.setObject(clearTimeout, forKeyedSubscript: "clearTimeout" as (NSCopying & NSObjectProtocol))
-        jsContext.setObject(setInterval, forKeyedSubscript: "setInterval" as (NSCopying & NSObjectProtocol))
-        jsContext.setObject(clearInterval, forKeyedSubscript: "clearInterval" as (NSCopying & NSObjectProtocol))
+    open func extend(_ jsContext: JSContext, jsQueue: DispatchQueue) {
+        queue = jsQueue
+        guard let q = queue else {
+            return
+        }
+        q.async {
+            jsContext.setObject(self.setTimeout, forKeyedSubscript: "setTimeout" as (NSCopying & NSObjectProtocol))
+            jsContext.setObject(self.clearTimeout, forKeyedSubscript: "clearTimeout" as (NSCopying & NSObjectProtocol))
+            jsContext.setObject(self.setInterval, forKeyedSubscript: "setInterval" as (NSCopying & NSObjectProtocol))
+            jsContext.setObject(self.clearInterval, forKeyedSubscript: "clearInterval" as (NSCopying & NSObjectProtocol))
+        }
     }
     
     
@@ -48,20 +71,12 @@ import JavaScriptCore
     //
     
     // Timeout
-    public static let setTimeout: @convention(block) (JSValue, Double) -> UInt = { (callback, delay) in
-        return createTimer(callback: callback, delay: delay, repeats: false)
-    }
-    public static let clearTimeout: @convention(block) (UInt) -> Void = { (identifier) in
-        invalidateTimer(identifier)
-    }
+    public var setTimeout: (@convention(block) (JSValue, Double) -> UInt)!
+    public var clearTimeout: (@convention(block) (UInt) -> Void)!
     
     // Interval
-    public static let setInterval: @convention(block) (JSValue, Double) -> UInt = { (callback, delay) in
-        return createTimer(callback: callback, delay: delay, repeats: true)
-    }
-    public static let clearInterval: @convention(block) (UInt) -> Void = { (identifier) in
-        invalidateTimer(identifier)
-    }
+    public var setInterval: (@convention(block) (JSValue, Double) -> UInt)!
+    public var clearInterval: (@convention(block) (UInt) -> Void)!
     
     
     
@@ -69,8 +84,8 @@ import JavaScriptCore
     // Internals
     //
     
-    internal static var timers = [UInt: Timer]()
-    internal static var prevTimerId: UInt = 0
+    internal var timers = [UInt: Timer]()
+    internal var prevTimerId: UInt = 0
     
     fileprivate struct TimerData {
         var id: UInt
@@ -78,7 +93,7 @@ import JavaScriptCore
         var repeats: Bool
     }
     
-    internal class func createTimer(callback: JSValue, delay: Double, repeats: Bool) -> UInt {
+    internal  func createTimer(callback: JSValue, delay: Double, repeats: Bool) -> UInt {
         let callbackManagedValue = JSManagedValue(value: callback)!
         let timerId = prevTimerId + 1
         
@@ -87,7 +102,7 @@ import JavaScriptCore
             let timer = Timer.scheduledTimer(
                 timeInterval: delay/1000.0,
                 target: self,
-                selector: #selector(fireTimer(timer:)),
+                selector: #selector(self.fireTimer(timer:)),
                 userInfo: TimerData(id: timerId, callbackManagedValue: callbackManagedValue, repeats: repeats),
                 repeats: repeats
             )
@@ -114,34 +129,44 @@ import JavaScriptCore
         return timerId
     }
     
-    @objc internal class func fireTimer(timer: Timer) {
+    @objc internal  func fireTimer(timer: Timer) {
         let userInfo = timer.userInfo as! TimerData
-    
+    guard let q = queue else {
+        return
+    }
+    q.async {
         if let callback = userInfo.callbackManagedValue.value {
             if callback.isNull || callback.isUndefined {
                 timer.invalidate()
-                timers.removeValue(forKey: userInfo.id)
+                self.timers.removeValue(forKey: userInfo.id)
             }
             guard callback.call(withArguments: []) != nil else {
                 // INFO: callback no-longer exists, or is not a function
                 timer.invalidate()
-                timers.removeValue(forKey: userInfo.id)
+                self.timers.removeValue(forKey: userInfo.id)
                 return
             }
             if !userInfo.repeats {
-                timers.removeValue(forKey: userInfo.id)
+                self.timers.removeValue(forKey: userInfo.id)
             }
         }
     }
+        
+    }
     
-    internal class func invalidateTimer(_ identifier: UInt) {
-        if let timer = timers.removeValue(forKey: identifier) {
-            let userInfo = timer.userInfo as! TimerData
-            let callbackManagedValue = userInfo.callbackManagedValue
-            let callback = callbackManagedValue.value
-            callback?.context.virtualMachine.removeManagedReference(callbackManagedValue, withOwner: timer)
-            
-            timer.invalidate()
+    internal  func invalidateTimer(_ identifier: UInt) {
+        guard let q = queue else {
+           return
+       }
+       q.async {
+            if let timer = self.timers.removeValue(forKey: identifier) {
+                let userInfo = timer.userInfo as! TimerData
+                let callbackManagedValue = userInfo.callbackManagedValue
+                let callback = callbackManagedValue.value
+                callback?.context.virtualMachine.removeManagedReference(callbackManagedValue, withOwner: timer)
+                
+                timer.invalidate()
+            }
         }
     }
     
