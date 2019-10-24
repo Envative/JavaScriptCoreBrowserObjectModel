@@ -106,12 +106,12 @@ extension URLSessionDelegateProxy: URLSessionTaskDelegate {
     func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
         (target as? URLSessionTaskDelegate)?.urlSession?(session, task: task, didFinishCollecting: metrics)
     }
-    
-    @available(iOS 7.0, *)
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        (target as? URLSessionTaskDelegate)?.urlSession?(session, task: task, didCompleteWithError: error)
-    }
     */
+//    @available(iOS 7.0, *)
+//    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+//        //(target as? URLSessionTaskDelegate)?.urlSession?(session, task: task, didCompleteWithError: error)
+//    }
+    
     
 }
 
