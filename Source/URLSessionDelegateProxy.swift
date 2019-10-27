@@ -34,16 +34,17 @@ extension URLSessionDelegateProxy: URLSessionDelegate {
     func urlSession(_ session: URLSession, didBecomeInvalidWithError error: Error?) {
         target?.urlSession?(session, didBecomeInvalidWithError: error)
     }
-    
-    @available(iOS 7.0, *)
-    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Swift.Void) {
-        guard target != nil, target!.responds(to: #function) else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-        target?.urlSession?(session, didReceive: challenge, completionHandler: completionHandler)
-    }
-    
+    */
+//    @available(iOS 7.0, *)
+//    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Swift.Void) {
+//        guard target != nil, target!.responds(to: #function) else {
+//
+//            completionHandler(.useCredential, challenge.proposedCredential)
+//            return
+//        }
+//        target?.urlSession?(session, didReceive: challenge, completionHandler: completionHandler)
+//    }
+    /*
     @available(iOS 7.0, *)
     func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         target?.urlSessionDidFinishEvents?(forBackgroundURLSession: session)
@@ -78,16 +79,16 @@ extension URLSessionDelegateProxy: URLSessionTaskDelegate {
         }
         (target as? URLSessionTaskDelegate)?.urlSession?(session, task: task, willPerformHTTPRedirection: response, newRequest: request, completionHandler: completionHandler)
     }
-    
-    @available(iOS 7.0, *)
-    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Swift.Void) {
-        guard target != nil, target!.responds(to: #function) else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-        (target as? URLSessionTaskDelegate)?.urlSession?(session, didReceive: challenge, completionHandler: completionHandler)
-    }
-    
+    */
+//    @available(iOS 7.0, *)
+//    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Swift.Void) {
+//        guard target != nil, target!.responds(to: #function) else {
+//            completionHandler(.performDefaultHandling, nil)
+//            return
+//        }
+//        (target as? URLSessionTaskDelegate)?.urlSession?(session, didReceive: challenge, completionHandler: completionHandler)
+//    }
+    /*
     @available(iOS 7.0, *)
     func urlSession(_ session: URLSession, task: URLSessionTask, needNewBodyStream completionHandler: @escaping (InputStream?) -> Swift.Void) {
         guard target != nil, target!.responds(to: #function) else {

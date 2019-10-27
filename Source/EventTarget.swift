@@ -18,6 +18,13 @@ import JavaScriptCore
 
 @objc public class EventTarget: NSObject, EventTargetJSProtocol {
     
+    public static var workerQueue: DispatchQueue!
+    public static var jsQueue: DispatchQueue!
+    public static func extend(workerQueue: DispatchQueue, jsQueue: DispatchQueue) {
+        self.workerQueue = workerQueue
+        self.jsQueue = jsQueue
+    }
+    
     private var _eventListeners = [String: [( eventListener: EventListenerRef, options: EventListenerOptions? )]]()
     
     public func addEventListener(_ event: String!, _ listener: EventListener!, _ options: JSValue? = nil) -> Void {
@@ -60,20 +67,23 @@ import JavaScriptCore
     
     @discardableResult
     public func dispatchEvent(_ event: String!) -> Bool {
-        if let eventListener = value(forKey: "on\(String(stringLiteral: event))") as? EventListener {
-            //eventListener.value.call(withArguments: [])
-            let thisObject = JSValue(object: self, in: eventListener.context)!
-            JSObjectCallAsFunction(eventListener.context.jsGlobalContextRef, eventListener.jsValueRef, thisObject.jsValueRef, 0, nil, nil)
-        }
-        if let eventListeners = _eventListeners[event] {
-            eventListeners.forEach({ (eventListener, options) in
+       
+        EventTarget.jsQueue.async {
+            if let eventListener = self.value(forKey: "on\(String(stringLiteral: event))") as? EventListener {
                 //eventListener.value.call(withArguments: [])
-                let listener = eventListener.value!
-                let thisObject = JSValue(object: self, in: listener.context)!
-                JSObjectCallAsFunction(listener.context.jsGlobalContextRef, listener.jsValueRef, thisObject.jsValueRef, 0, nil, nil)
-            })
-            while let removeIdx = eventListeners.index(where: { $0.options?.once == true }) {
-                removeEventListener(event, removeIdx)
+                let thisObject = JSValue(object: self, in: eventListener.context)!
+                JSObjectCallAsFunction(eventListener.context.jsGlobalContextRef, eventListener.jsValueRef, thisObject.jsValueRef, 0, nil, nil)
+            }
+            if let eventListeners = self._eventListeners[event] {
+                eventListeners.forEach({ (eventListener, options) in
+                    //eventListener.value.call(withArguments: [])
+                    let listener = eventListener.value!
+                    let thisObject = JSValue(object: self, in: listener.context)!
+                    JSObjectCallAsFunction(listener.context.jsGlobalContextRef, listener.jsValueRef, thisObject.jsValueRef, 0, nil, nil)
+                })
+                while let removeIdx = eventListeners.index(where: { $0.options?.once == true }) {
+                    self.removeEventListener(event, removeIdx)
+                }
             }
         }
         return true

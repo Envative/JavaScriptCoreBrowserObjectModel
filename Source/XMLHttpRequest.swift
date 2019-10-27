@@ -9,6 +9,26 @@
 import Foundation
 import JavaScriptCore
 
+class RequestRegistry {
+    static var shared = RequestRegistry()
+    struct Record {
+        let request: XMLHttpRequest
+        let date: Date
+    }
+    var requests: [Record] = []
+    
+    func add(_ request: XMLHttpRequest) {
+        let now = Date()
+        requests.append(Record(request: request, date: now))
+    }
+    
+    func removeAll() {
+        requests.removeAll()
+    }
+}
+
+
+
 @objc protocol XMLHttpRequestJSProtocol: JSExport, XMLHttpRequestEventTarget {
     var readyState: XMLHttpRequestReadyState { get }
     var response: Any? { get }
@@ -41,12 +61,19 @@ import JavaScriptCore
 //}
 
 @objc public class XMLHttpRequest: /*NSObject*/EventTarget, XMLHttpRequestJSProtocol {
+    
+    var isChallenged = false
+    public static var username_creds:String?
+    public static var password_creds:String?
+
 
     public var readyState: XMLHttpRequestReadyState = .UNSENT { // read-only
         didSet {
             //onreadystatechange?()
             //onreadystatechange?.value.call(withArguments: [])
-            dispatchEvent("readystatechange")
+           dispatchEvent("readystatechange")
+            
+            
         }
     }
 
@@ -89,7 +116,9 @@ import JavaScriptCore
     //public var responseXML: Any?
 
     public var status: XMLHttpRequestStatus { // read-only
-        return _response?.statusCode ?? 0
+        return isChallenged
+            ? 200
+            : _response?.statusCode ?? 0
     }
     public var statusText: String? { // read-only
         guard status != 0 else { return nil }
@@ -105,7 +134,8 @@ import JavaScriptCore
 
     // MARK: Internal Variables
     //private var _urlSession: URLSession = URLSession.shared
-    private lazy var _urlSession: URLSession = URLSession(configuration: /*.default*/.ephemeral, delegate: URLSessionDelegateProxy(), delegateQueue: nil)
+    
+    private lazy var _urlSession: URLSession = URLSession(configuration: /*.default*/.default, delegate: URLSessionDelegateProxy(target: self), delegateQueue: nil)
     //private lazy var _urlSession: URLSession = URLSession(configuration: .background(withIdentifier: "JavaScriptCoreBrowserObjectModel.XMLHttpRequest"), delegate: URLSessionDelegateProxy(), delegateQueue: nil)
     private var _requestHeaders = [String: String]()
     //private var _responseHeaders = [String: String]()
@@ -128,6 +158,16 @@ import JavaScriptCore
         //if let context = JSContext.current() {
         //    context.virtualMachine.addManagedReference(self, withOwner: context)
         //}
+        let config = URLSessionConfiguration.default
+        config.httpShouldSetCookies = true
+        config.timeoutIntervalForRequest = 120.0
+        //config.urlCredentialStorage = URLCredentialStorage()
+        _urlSession = URLSession(
+            configuration: config,
+            delegate: URLSessionDelegateProxy(target: self),
+            delegateQueue: nil
+        )
+        
     }
 
     deinit {
@@ -164,19 +204,28 @@ import JavaScriptCore
         return _responseHeaders.first(where: { $0.key.lowercased() == name.lowercased() })?.value
     }
 
-    public func open(_ method: String!, _ url: String!, _ async: Bool = true, _ user: String? = nil, _ password: String? = nil) -> Void {
+    public func open(_ method: String, _ url: String, _ async: Bool = true, _ user: String? = nil, _ password: String? = nil) -> Void {
         //print("XMLHttpRequest open( method: \(method), url: \(url), async: \(async), user: \(String(describing: user)), password: \(String(describing: password)) )")
+//        XMLHttpRequest.workerQueue.async {
+            print("\(method) Request: \(url)")
+            self._request = URLRequest(url: URL(string: url)!)
+            //_request = URLRequest(url: URL(string: url)!, cachePolicy: .useProtocolCachePolicy, timeoutInterval: TimeInterval(timeout))
+            self._request!.httpMethod = method
+            self._async = async
+            
+            if let user = user, user != "undefined" {
+                self._user = user
+                print("open with user: \(user)")
+            }
+            if let pass = password, pass != "undefined" {
+                self._password = password
+                print("open with pass: \(pass)")
+            }
 
-        _request = URLRequest(url: URL(string: url)!)
-        //_request = URLRequest(url: URL(string: url)!, cachePolicy: .useProtocolCachePolicy, timeoutInterval: TimeInterval(timeout))
-        _request!.httpMethod = method
-        _async = async
-        _user = user
-        _password = password
+            self._responseData = nil
 
-        _responseData = nil
-
-        readyState = .OPENED
+            self.readyState = .OPENED
+//        }
     }
 
     public func overrideMimeType(_ mimetype: String!) -> Void {
@@ -188,30 +237,45 @@ import JavaScriptCore
 
         //JSValueProtect(JSContext.current()!.jsGlobalContextRef, JSContext.currentThis().jsValueRef)
         //JSContext.current().virtualMachine.addManagedReference(self, withOwner: JSContext.current().jsGlobalContextRef)
-
-        for (header, value) in _requestHeaders {
-            _request!.setValue(value, forHTTPHeaderField: header)
-        }
-        //_request!.timeoutInterval = TimeInterval(timeout)
-        if body != nil && body!.isString {
-            _request!.httpBody = body!.toString().data(using: .utf8)
-        }
-
-        (_urlSession.delegate as! URLSessionDelegateProxy).target = self
-
-        let dataTask = _urlSession.dataTask(with: _request!) /*{ (data, response, error) in
-            print("_dataTask callback!!!")
-            print("  data: \(data.debugDescription)")
-            print("  response: \(response.debugDescription)")
-            print("  error: \(error.debugDescription)")
-            //self.readyState = .DONE
-        }*/
-        dataTask.resume()
-        _dataTask = dataTask
+//        XMLHttpRequest.workerQueue.async {
+        //DispatchQueue.main.async {
+            for (header, value) in self._requestHeaders {
+                self._request!.setValue(value, forHTTPHeaderField: header)
+            }
+        
+            //_request!.timeoutInterval = TimeInterval(timeout)
+            if let body = body, body.isString {
+                if let strValue = body.toString() {
+                    print("request body: \(strValue)")
+                    if let data = strValue.data(using: .utf8) {
+                        self._request!.httpBody = data
+                    
+                    }
+                }
+            }
+//            if body != nil && body!.isString {
+//                let strValue = body!.toString().data(using: .utf8)
+//                print("request body: \(strValue)")
+//                self._request!.httpBody = strValue
+//            }
+        
+            (self._urlSession.delegate as! URLSessionDelegateProxy).target = self
+            
+            let dataTask = self._urlSession.dataTask(with: self._request!) /*{ (data, response, error) in
+                print("_dataTask callback!!!")
+                print("  data: \(data.debugDescription)")
+                print("  response: \(response.debugDescription)")
+                print("  error: \(error.debugDescription)")
+                //self.readyState = .DONE
+            }*/
+            dataTask.resume()
+            self._dataTask = dataTask
+        //}
     }
 
-    public func setRequestHeader(_ header: String!, _ value: String!) -> Void {
+    public func setRequestHeader(_ header: String, _ value: String) -> Void {
         //_request.setValue(value, forHTTPHeaderField: header)
+        print("\(header): \(value)")
         _requestHeaders[header] = value
     }
 
@@ -486,9 +550,13 @@ extension XMLHttpRequest: URLSessionDelegate {
     //    print("XMLHttpRequest urlSession( session: \(session), didBecomeInvalidWithError: \(String(describing: error)) )")
     //}
 
-    //public func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Swift.Void) {
-    //    print("XMLHttpRequest urlSession( session: \(session), didReceive: \(challenge), completionHandler: \(completionHandler) )")
-    //}
+//    public func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Swift.Void) {
+//        print("XMLHttpRequest urlSession(\n  session: \(session),\n  didReceive: \(challenge),\n  completionHandler: \(completionHandler) )")
+//        isChallenged = true
+//        //completionHandler(.performDefaultHandling, nil)
+//        completionHandler(.rejectProtectionSpace, nil)
+//
+//    }
 
     //public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
     //    print("XMLHttpRequest urlSessionDidFinishEvents( forBackgroundURLSession: \(session) )")
@@ -514,9 +582,15 @@ extension XMLHttpRequest: URLSessionTaskDelegate {
     //    print("XMLHttpRequest urlSession( session: URLSession, task: \(task), willPerformHTTPRedirection: \(response), newRequest: \(request), completionHandler: \(completionHandler) )")
     //}
 
-    //public func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Swift.Void) {
-    //    print("XMLHttpRequest urlSession( session: URLSession, task: \(task), didReceive: \(challenge), completionHandler: \(completionHandler) )")
-    //}
+//    public func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Swift.Void) {
+//        print("XMLHttpRequest urlSession( session: URLSession, task: \(task), didReceive: \(challenge), completionHandler: \(completionHandler) )")
+//        
+//        readyState = .DONE
+//       dispatchEvent("load")
+//       dispatchEvent("loadend")
+//    }
+
+
 
     public func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
         //print("XMLHttpRequest urlSession( session: URLSession, task: \(task), didSendBodyData bytesSent: \(bytesSent), totalBytesSent: \(totalBytesSent), totalBytesExpectedToSend: \(totalBytesExpectedToSend) )")
@@ -531,15 +605,21 @@ extension XMLHttpRequest: URLSessionTaskDelegate {
         //print("XMLHttpRequest urlSession( session: URLSession, task: \(task), didCompleteWithError: \(String(describing: error)) )")
 
         (_urlSession.delegate as! URLSessionDelegateProxy).target = nil
-
+        print("responseText: \(responseText)")
         readyState = .DONE
 
-        if error != nil {
-            dispatchEvent("error")
+        XMLHttpRequest.workerQueue.async {
+            if error != nil {
+                self.dispatchEvent("error")
+            }
+
+            self.dispatchEvent("load")
+            XMLHttpRequest.workerQueue.async {
+                self.dispatchEvent("loadend")
+            }
         }
 
-        dispatchEvent("load")
-        dispatchEvent("loadend")
+        
 
     }
 
@@ -561,8 +641,10 @@ extension XMLHttpRequest: URLSessionDataDelegate {
             //_responseHeaders = (httpResponse.allHeaderFields as? [String: String]) ?? [:]
             readyState = .HEADERS_RECEIVED
         }
-
-        completionHandler(.allow)
+        
+        XMLHttpRequest.jsQueue.async {
+            completionHandler(.allow)
+        }
 
     }
 
