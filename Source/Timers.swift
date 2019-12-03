@@ -87,7 +87,7 @@ import JavaScriptCore
     // Internals
     //
     
-    internal var timers = [UInt: Timer]()
+    fileprivate var timers = [UInt: TimerData]()
     internal var prevTimerId: UInt = 0
     
     fileprivate struct TimerData {
@@ -95,121 +95,102 @@ import JavaScriptCore
         var callbackManagedValue: JSManagedValue
         var delayMS: Double
         var repeats: Bool
+        var isCancelled: Bool = false
     }
     
     internal  func createTimer(callback: JSValue, delay: Double, repeats: Bool) -> UInt {
         let callbackManagedValue = JSManagedValue(value: callback)!
         let timerId = prevTimerId + 1
+        self.prevTimerId = timerId
         
-       //workerQueue?.async {
-            self.prevTimerId = timerId
-//            let timer = Timer.scheduledTimer(
-//                timeInterval: delay/1000.0,
-//                target: self,
-//                selector: #selector(self.fireTimer(timer:)),
-//                userInfo: TimerData(id: timerId, callbackManagedValue: callbackManagedValue, delayMS: delay, repeats: repeats),
-//                repeats: repeats
-//            )
-            /*
-            // NOTE: the following implementation requires iOS 10, so we'll switch to it eventually
-            let timer = Timer.scheduledTimer(withTimeInterval: delay/1000.0, repeats: repeats) { timer in
-                let callback = callbackManagedValue.value
-                guard callback?.call(withArguments: []) != nil else {
-                    // INFO: callback no-longer exists, or is not a function
-                    timer.invalidate()
-                    timers.removeValue(forKey: timerId)
-                    return
-                }
-                if !repeats {
-                    timers.removeValue(forKey: timerId)
-                }
-            }
-            */
-            
-//           self.jsQueue?.async { callback.context.virtualMachine.addManagedReference(callbackManagedValue, withOwner: timer)
-//           }
-            //self.timers[timerId] = timer
-            
-            self.workerQueue?.asyncAfter(deadline: .now() + delay/1000.0, execute: {
-                self.fire(
-                    timer: TimerData(id: timerId, callbackManagedValue: callbackManagedValue, delayMS: delay, repeats: repeats)
-                )
-            })
-      //  }
-        //RunLoop.current.add(timer, forMode: .defaultRunLoopMode)
+        var timerData = TimerData(id: timerId, callbackManagedValue: callbackManagedValue, delayMS: delay, repeats: repeats)
+        self.timers[timerId] = timerData
+        self.workerQueue?.asyncAfter(deadline: .now() + delay/1000.0, execute: {
+            self.fire(
+                timer: timerData
+            )
+        })
         return timerId
     }
     
     fileprivate func fire(timer: TimerData) {
-        let userInfo = timer //.userInfo as! TimerData
+        //let userInfo = timer //.userInfo as! TimerData
         guard let q = jsQueue else {
             return
         }
-        q.async {
-            if let callback = userInfo.callbackManagedValue.value {
-                if callback.isNull || callback.isUndefined {
-                    //timer.invalidate()
-                    //self.timers.removeValue(forKey: userInfo.id)
+        if let timerData = self.timers[timer.id] {
+            if timerData.isCancelled == true {
+                return
+            }
+            q.async {
+                if let callback = timerData.callbackManagedValue.value {
+                    if callback.isNull || callback.isUndefined {
+                        //timer.invalidate()
+                        //self.timers.removeValue(forKey: userInfo.id)
+                    }
+                    let _ = callback.call(withArguments: [])
+                    if !timerData.repeats {
+                        //self.timers.removeValue(forKey: userInfo.id)
+                    } else {
+                        let delaySec = timer.delayMS > 0 ? timer.delayMS/1000.0 : 0.1
+                        self.workerQueue?.asyncAfter(
+                            deadline: .now() + delaySec,
+                            execute: {
+                               self.fire(
+                                timer: timer
+                               )
+                        })
+                    }
                 }
-                let _ = callback.call(withArguments: [])//!= nil else {
-                    // INFO: callback no-longer exists, or is not a function
-                    //timer.invalidate()
-                    //self.timers.removeValue(forKey: userInfo.id)
+            }
+        }
+        
+    }
+//
+//    @objc internal  func fireTimer(timer: Timer) {
+//        let userInfo = timer.userInfo as! TimerData
+//        guard let q = jsQueue else {
+//            return
+//        }
+//        q.async {
+//
+//
+//            if let callback = userInfo.callbackManagedValue.value {
+//                if callback.isNull || callback.isUndefined {
+//                    timer.invalidate()
+//                    self.timers.removeValue(forKey: userInfo.id)
+//                }
+//                guard callback.call(withArguments: []) != nil else {
+//                    // INFO: callback no-longer exists, or is not a function
+//                    timer.invalidate()
+//                    self.timers.removeValue(forKey: userInfo.id)
 //                    return
 //                }
-                if !userInfo.repeats {
-                    //self.timers.removeValue(forKey: userInfo.id)
-                } else {
-                    self.workerQueue?.asyncAfter(
-                        deadline: .now() + timer.delayMS/1000.0,
-                        execute: {
-                           self.fire(
-                            timer: timer
-                           )
-                    })
-                }
-            }
-        }
-        
-    }
-    
-    @objc internal  func fireTimer(timer: Timer) {
-        let userInfo = timer.userInfo as! TimerData
-        guard let q = jsQueue else {
-            return
-        }
-        q.async {
-            if let callback = userInfo.callbackManagedValue.value {
-                if callback.isNull || callback.isUndefined {
-                    timer.invalidate()
-                    self.timers.removeValue(forKey: userInfo.id)
-                }
-                guard callback.call(withArguments: []) != nil else {
-                    // INFO: callback no-longer exists, or is not a function
-                    timer.invalidate()
-                    self.timers.removeValue(forKey: userInfo.id)
-                    return
-                }
-                if !userInfo.repeats {
-                    self.timers.removeValue(forKey: userInfo.id)
-                }
-            }
-        }
-        
-    }
+//                if !userInfo.repeats {
+//                    self.timers.removeValue(forKey: userInfo.id)
+//                }
+//            }
+//        }
+//
+//    }
     
     internal  func invalidateTimer(_ identifier: UInt) {
         guard let q = jsQueue else {
            return
        }
+       if var timer = self.timers[identifier] {
+            timer.isCancelled = true
+            self.timers[identifier] = timer
+       }
+       
        q.async {
             if let timer = self.timers.removeValue(forKey: identifier) {
-                let userInfo = timer.userInfo as! TimerData
-                let callbackManagedValue = userInfo.callbackManagedValue
+                //let userInfo = timer.userInfo as! TimerData
+                let callbackManagedValue = timer.callbackManagedValue
                 let callback = callbackManagedValue.value
                 callback?.context.virtualMachine.removeManagedReference(callbackManagedValue, withOwner: timer)
                 
-                timer.invalidate()
+                //timer.invalidate()
             }
         }
     }
